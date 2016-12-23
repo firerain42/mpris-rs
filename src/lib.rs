@@ -20,6 +20,8 @@ use std::fmt;
 
 use dbus::{Path, MessageItem};
 
+pub mod client;
+
 pub type MprisResult<T> = Result<T, MprisError>;
 
 /// A common error struct.
