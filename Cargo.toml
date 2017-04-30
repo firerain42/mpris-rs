@@ -1,9 +1,9 @@
 [package]
-name = "mpris"
+name    = "mpris"
 version = "0.1.0"
 authors = ["firerain42 <firerain42@googlemail.com>"]
 license = "MIT"
 
 [dependencies]
-dbus   = "0.4"
-time   = "0.1"
+dbus        = "0.5"
+time        = "0.1"
