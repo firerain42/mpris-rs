@@ -1,4 +1,5 @@
 use dbus::{BusType, Connection, Message, Props, MessageItem};
+use std::rc::Rc;
 
 use super::{MprisError, MprisResult};
 
@@ -7,13 +8,13 @@ macro_rules! try_mpris {
     ($e:expr, $msg:expr) => (try!($e.map_err(|_| MprisError::new($msg))));
 }
 
-pub struct MprisClient {
+struct DBusConn {
     conn: Connection,
     bus_name: String,
     timeout: i32,
 }
 
-impl MprisClient {
+impl DBusConn {
     fn call_method_without_reply(&self, obj_path: &str, member: &str) -> MprisResult<()> {
         let msg = try_mpris!(Message::new_method_call(&self.bus_name,
                                                       obj_path,
@@ -46,23 +47,62 @@ impl MprisClient {
     }
 
 
-    /// Constructs a new `MprisClient` for `org.mpris.MediaPlayer2.playerName`.
+    /// Constructs a new `DBusConn` for `org.mpris.MediaPlayer2.playerName`.
     ///
     /// `timeout_ms` specifies the maximum time a D-Bus method call blocks. The vagetlue -1 disables
     /// the timeout.
-    pub fn new(player_name: &str, timeout_ms: i32) -> MprisResult<Self> {
+    fn new(player_name: &str, timeout_ms: i32) -> MprisResult<Self> {
         let conn = try_mpris!(Connection::get_private(BusType::Session));
-        Ok(MprisClient {
+        Ok(DBusConn {
             conn: conn,
             bus_name: format!("org.mpris.MediaPlayer2.{}", player_name),
             timeout: timeout_ms,
         })
     }
+}
+
+
+
+
+pub struct MprisClient {
+    dbus_conn: Rc<DBusConn>,
+
+    pub root: MprisRoot,
+}
+
+impl MprisClient {
+    pub fn new(player_name: &str, timeout_ms: i32) -> MprisResult<Self> {
+        let dbus_conn = Rc::new(DBusConn::new(player_name, timeout_ms)?);
+
+        let dbus_conn_clone = dbus_conn.clone();
+
+        Ok(MprisClient {
+            dbus_conn: dbus_conn,
+
+            root: MprisRoot::new(dbus_conn_clone)
+        })
+    }
+}
+
+
+
+pub struct MprisRoot {
+    dbus_conn: Rc<DBusConn>,
+}
+
+
+impl MprisRoot {
+
+    fn new(dbus_conn: Rc<DBusConn>) -> Self {
+        MprisRoot {
+            dbus_conn: dbus_conn,
+        }
+    }
 
     /// Brings the media player's user interface to the front using any appropriate mechanism
     /// available.
     pub fn raise(&self) -> Result<(), MprisError> {
-        self.call_method_without_reply("/org/mpris/MediaPlayer2", "Raise")
+        self.dbus_conn.call_method_without_reply("/org/mpris/MediaPlayer2", "Raise")
     }
 
     /// Causes the media player to stop running.
@@ -70,7 +110,7 @@ impl MprisClient {
     /// The media player may refuse to allow clients to shut it down. In this case, the `can_quit`
     /// property is `false` and this method does nothing.
     pub fn quit(&self) -> Result<(), MprisError> {
-        self.call_method_without_reply("/org/mpris/MediaPlayer2", "Quit")
+        self.dbus_conn.call_method_without_reply("/org/mpris/MediaPlayer2", "Quit")
     }
 
     /// If `false`, calling `quit` will have no effect, and may raise an error. If `true`,
@@ -80,7 +120,7 @@ impl MprisClient {
     /// When this property changes, the `org.freedesktop.DBus.Properties.PropertiesChanged` signal
     /// is emitted with the new value.
     pub fn can_quit(&self) -> MprisResult<bool> {
-        match self.get_prop("/org/mpris/MediaPlayer2", "CanQuit") {
+        match self.dbus_conn.get_prop("/org/mpris/MediaPlayer2", "CanQuit") {
             Ok(MessageItem::Bool(cq)) => Ok(cq),
             Err(err) => Err(MprisError::from(err)),
             Ok(_) => Err(MprisError::new("Could not get property.")),
@@ -99,7 +139,7 @@ impl MprisClient {
     ///
     /// This property is optional.
     pub fn fullscreen(&self) -> MprisResult<bool> {
-        match self.get_prop("/org/mpris/MediaPlayer2", "Fullscreen") {
+        match self.dbus_conn.get_prop("/org/mpris/MediaPlayer2", "Fullscreen") {
             Ok(MessageItem::Bool(cq)) => Ok(cq),
             Err(err) => Err(MprisError::from(err)),
             Ok(_) => Err(MprisError::new("Could not get property.")),
@@ -124,6 +164,6 @@ impl MprisClient {
     ///
     /// This property is optional.
     pub fn set_fullscreen(&self, value: bool) -> MprisResult<()> {
-        self.set_prop("/org/mpris/MediaPlayer2", "Fullscreen", MessageItem::Bool(value))
+        self.dbus_conn.set_prop("/org/mpris/MediaPlayer2", "Fullscreen", MessageItem::Bool(value))
     }
 }
