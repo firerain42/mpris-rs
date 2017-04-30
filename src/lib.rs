@@ -9,68 +9,20 @@
 //! players, as well as a tracklist interface which is used to add context to the active media
 //! item.
 
+#![recursion_limit = "1024"]
+
 extern crate dbus;
 extern crate time;
+#[macro_use]
+extern crate error_chain;
 
 use std::vec::Vec;
 use std::convert::From;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::fmt;
 
 use dbus::{Path, MessageItem};
 
 pub mod client;
-
-pub type MprisResult<T> = Result<T, MprisError>;
-
-/// A common error struct.
-#[derive(Debug)]
-pub struct MprisError {
-    msg: String,
-}
-
-impl MprisError {
-    fn new(msg: &str) -> Self {
-        MprisError { msg: msg.to_string() }
-    }
-}
-
-impl Display for MprisError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "MPRIS error: {}", self.msg)
-    }
-}
-
-impl Error for MprisError {
-    fn description(&self) -> &str {
-        &self.msg
-    }
-}
-
-impl From<String> for MprisError {
-    fn from(msg: String) -> Self {
-        MprisError::new(&msg)
-    }
-}
-
-impl<'a> From<&'a str> for MprisError {
-    fn from(msg: &'a str) -> Self {
-        MprisError::new(msg)
-    }
-}
-
-impl From<dbus::Error> for MprisError {
-    fn from(err: dbus::Error) -> Self {
-        let msg = match (err.message(), err.name()) {
-            (Some(msg), Some(name)) => format!("D-Bus error: {} ({})", msg, name),
-            (Some(msg), None) => format!("D-Bus error: {}", msg),
-            (None, Some(name)) => format!("D-Bus error: ({})", name),
-            (None, None) => format!("D-Bus error: unknown error"),
-        };
-        MprisError::new(&msg)
-    }
-}
+mod errors;
 
 
 /// A playback state.
