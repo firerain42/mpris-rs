@@ -1,5 +1,6 @@
-use dbus::{BusType, Connection, Message, Props, MessageItem};
+use dbus::{BusType, Connection, Message, Props, PropHandler, MessageItem};
 use std::rc::Rc;
+use std::collections::BTreeMap;
 
 use errors::*;
 
@@ -30,6 +31,26 @@ impl DBusConn {
         Ok(msg_item)
     }
 
+    fn get_optional_prop(&self, obj_path: &str, member: &str) -> Result<Option<MessageItem>> {
+        let prop = Props::new(&self.conn,
+                              &self.bus_name,
+                              obj_path,
+                              "org.mpris.MediaPlayer2",
+                              self.timeout);
+        match prop.get(member) {
+            Ok(msg_item) => Ok(Some(msg_item)),
+            Err(e) => {
+                if e.message()
+                    .map(|msg| msg.contains("was not found"))
+                    .unwrap_or(false) {
+                    Ok(None)
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
+    }
+
     fn set_prop(&self, obj_path: &str, member: &str, value: MessageItem) -> Result<()> {
         let prop = Props::new(&self.conn,
                               &self.bus_name,
@@ -43,12 +64,12 @@ impl DBusConn {
 
     /// Constructs a new `DBusConn` for `org.mpris.MediaPlayer2.playerName`.
     ///
-    /// `timeout_ms` specifies the maximum time a D-Bus method call blocks. The vagetlue -1 disables
+    /// `timeout_ms` specifies the maximum time a D-Bus method call blocks. The value -1 disables
     /// the timeout.
     fn new(player_name: &str, timeout_ms: i32) -> Result<Self> {
         let conn = Connection::get_private(BusType::Session)?;
         Ok(DBusConn {
-            conn: conn,
+            conn,
             bus_name: format!("org.mpris.MediaPlayer2.{}", player_name),
             timeout: timeout_ms,
         })
@@ -69,7 +90,7 @@ impl MprisClient {
         let dbus_conn_clone = dbus_conn.clone();
 
         Ok(MprisClient {
-            dbus_conn: dbus_conn,
+            dbus_conn,
 
             root: MprisRoot::new(dbus_conn_clone),
         })
@@ -84,7 +105,7 @@ pub struct MprisRoot {
 
 impl MprisRoot {
     fn new(dbus_conn: Rc<DBusConn>) -> Self {
-        MprisRoot { dbus_conn: dbus_conn }
+        MprisRoot { dbus_conn }
     }
 
     /// Brings the media player's user interface to the front using any appropriate mechanism
@@ -129,9 +150,10 @@ impl MprisRoot {
     /// is emitted with the new value.
     ///
     /// This property is optional.
-    pub fn fullscreen(&self) -> Result<bool> {
-        match self.dbus_conn.get_prop("/org/mpris/MediaPlayer2", "Fullscreen") {
-            Ok(MessageItem::Bool(cq)) => Ok(cq),
+    pub fn fullscreen(&self) -> Result<Option<bool>> {
+        match self.dbus_conn.get_optional_prop("/org/mpris/MediaPlayer2", "Fullscreen") {
+            Ok(Some(MessageItem::Bool(cq))) => Ok(Some(cq)),
+            Ok(None) => Ok(None),
             Err(err) => Err(err.into()),
             Ok(_) => {
                 Err(ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
