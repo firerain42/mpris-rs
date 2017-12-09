@@ -5,6 +5,6 @@ authors = ["firerain42 <firerain42@googlemail.com>"]
 license = "MIT"
 
 [dependencies]
-dbus        = "0.5"
+dbus        = "0.6"
 time        = "0.1"
-error-chain = "0.10"
+error-chain = "0.11"
