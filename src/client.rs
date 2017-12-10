@@ -211,15 +211,38 @@ impl MprisRoot {
         )
     }
 
-    pub fn signals(&self, wait_ms: u32) -> Result<Vec<MprisSignals>> {
+    /// Returns an iterator of `MprisSignal`s.`timeout_ms` specifies the maximum amount of time the
+    /// iterator blocks (and waits for new messages).
+    pub fn signals(&self, timeout_ms: u32) -> Result<MprisSignals> {
         self.dbus_conn.conn.add_match(
             "interface='org.mpris.MediaPlayer2.Player',member='Seeked'",
         )?;
 
-        let signals: Vec<MprisSignals> = self
+        Ok(MprisSignals::new(self.dbus_conn.clone(), timeout_ms))
+    }
+}
+
+/// Iterator over `MprisSignal`s.
+pub struct MprisSignals {
+    dbus_conn: Rc<DBusConn>,
+    timeout_ms: u32,
+}
+
+impl MprisSignals {
+    /// Creates new `MprisSignals` instance.
+    fn new(dbus_conn: Rc<DBusConn>, timeout_ms: u32) -> Self {
+        MprisSignals { dbus_conn, timeout_ms }
+    }
+}
+
+impl Iterator for MprisSignals {
+    type Item = MprisSignal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self
             .dbus_conn
             .conn
-            .incoming(wait_ms)
+            .incoming(self.timeout_ms)
             .filter(|msg| {
                 msg.msg_type() == MessageType::Signal
                     && msg.interface() == Some("org.mpris.MediaPlayer2.Player".into())
@@ -229,20 +252,18 @@ impl MprisRoot {
                     match &member as &str {
                         "Seeked" => {
                             if let Some(pos) = msg.get1::<i64>() {
-                                Some(MprisSignals::Seeked { position: pos })
+                                Some(MprisSignal::Seeked { position: pos })
                             } else { None }
                         }
                         _ => None,
                     }
                 } else { None }
-            })
-            .collect();
-
-        Ok(signals)
+            }).next()
     }
 }
 
+/// Enum for the signals emitted by an MPRIS interface.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum MprisSignals {
+pub enum MprisSignal {
     Seeked { position: i64 },
 }
