@@ -1,4 +1,4 @@
-use dbus::{BusType, Connection, Message, Props, MessageItem};
+use dbus::{BusType, Connection, Message, Props, MessageItem, MessageType};
 use std::rc::Rc;
 
 use errors::*;
@@ -210,4 +210,39 @@ impl MprisRoot {
             MessageItem::Bool(value),
         )
     }
+
+    pub fn signals(&self, wait_ms: u32) -> Result<Vec<MprisSignals>> {
+        self.dbus_conn.conn.add_match(
+            "interface='org.mpris.MediaPlayer2.Player',member='Seeked'",
+        )?;
+
+        let signals: Vec<MprisSignals> = self
+            .dbus_conn
+            .conn
+            .incoming(wait_ms)
+            .filter(|msg| {
+                msg.msg_type() == MessageType::Signal
+                    && msg.interface() == Some("org.mpris.MediaPlayer2.Player".into())
+            })
+            .filter_map(|msg| {
+                if let Some(member) = msg.member() {
+                    match &member as &str {
+                        "Seeked" => {
+                            if let Some(pos) = msg.get1::<i64>() {
+                                Some(MprisSignals::Seeked { position: pos })
+                            } else { None }
+                        }
+                        _ => None,
+                    }
+                } else { None }
+            })
+            .collect();
+
+        Ok(signals)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MprisSignals {
+    Seeked { position: i64 },
 }
