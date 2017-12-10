@@ -16,26 +16,32 @@ impl DBusConn {
 
         self.conn
             .send_with_reply_and_block(msg, self.timeout)
-            .chain_err(|| ErrorKind::GeneralError("Could not call D-Bus method.".to_string()))?;
+            .chain_err(|| {
+                ErrorKind::GeneralError("Could not call D-Bus method.".to_string())
+            })?;
         Ok(())
     }
 
     fn get_prop(&self, obj_path: &str, member: &str) -> Result<MessageItem> {
-        let prop = Props::new(&self.conn,
-                              &self.bus_name,
-                              obj_path,
-                              "org.mpris.MediaPlayer2",
-                              self.timeout);
+        let prop = Props::new(
+            &self.conn,
+            &self.bus_name,
+            obj_path,
+            "org.mpris.MediaPlayer2",
+            self.timeout,
+        );
         let msg_item = prop.get(member)?;
         Ok(msg_item)
     }
 
     fn get_optional_prop(&self, obj_path: &str, member: &str) -> Result<Option<MessageItem>> {
-        let prop = Props::new(&self.conn,
-                              &self.bus_name,
-                              obj_path,
-                              "org.mpris.MediaPlayer2",
-                              self.timeout);
+        let prop = Props::new(
+            &self.conn,
+            &self.bus_name,
+            obj_path,
+            "org.mpris.MediaPlayer2",
+            self.timeout,
+        );
         match prop.get(member) {
             Ok(msg_item) => Ok(Some(msg_item)),
             Err(ref e) if match_dbus_err(&e, "DBus.Error.UnknownProperty") => Ok(None),
@@ -103,7 +109,10 @@ impl MprisRoot {
     /// Brings the media player's user interface to the front using any appropriate mechanism
     /// available.
     pub fn raise(&self) -> Result<()> {
-        self.dbus_conn.call_method_without_reply("/org/mpris/MediaPlayer2", "Raise")
+        self.dbus_conn.call_method_without_reply(
+            "/org/mpris/MediaPlayer2",
+            "Raise",
+        )
     }
 
     /// Causes the media player to stop running.
@@ -111,7 +120,10 @@ impl MprisRoot {
     /// The media player may refuse to allow clients to shut it down. In this case, the `can_quit`
     /// property is `false` and this method does nothing.
     pub fn quit(&self) -> Result<()> {
-        self.dbus_conn.call_method_without_reply("/org/mpris/MediaPlayer2", "Quit")
+        self.dbus_conn.call_method_without_reply(
+            "/org/mpris/MediaPlayer2",
+            "Quit",
+        )
     }
 
     /// If `false`, calling `quit` will have no effect, and may raise an error. If `true`,
@@ -121,11 +133,16 @@ impl MprisRoot {
     /// When this property changes, the `org.freedesktop.DBus.Properties.PropertiesChanged` signal
     /// is emitted with the new value.
     pub fn can_quit(&self) -> Result<bool> {
-        match self.dbus_conn.get_prop("/org/mpris/MediaPlayer2", "CanQuit") {
+        match self.dbus_conn.get_prop(
+            "/org/mpris/MediaPlayer2",
+            "CanQuit",
+        ) {
             Ok(MessageItem::Bool(cq)) => Ok(cq),
             Ok(_) => {
-                Err(ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
-                    .into())
+                Err(
+                    ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
+                        .into(),
+                )
             }
             Err(err) => Err(err.into()),
         }
@@ -143,13 +160,18 @@ impl MprisRoot {
     ///
     /// This property is optional.
     pub fn fullscreen(&self) -> Result<Option<bool>> {
-        match self.dbus_conn.get_optional_prop("/org/mpris/MediaPlayer2", "Fullscreen") {
+        match self.dbus_conn.get_optional_prop(
+            "/org/mpris/MediaPlayer2",
+            "Fullscreen",
+        ) {
             Ok(Some(MessageItem::Bool(cq))) => Ok(Some(cq)),
             Ok(None) => Ok(None),
             Err(err) => Err(err.into()),
             Ok(_) => {
-                Err(ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
-                    .into())
+                Err(
+                    ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
+                        .into(),
+                )
             }
         }
     }
@@ -162,18 +184,20 @@ impl MprisRoot {
     /// If `can_set_fullscreen` is `true`, clients may set this property to `true` to tell the media
     /// player to enter fullscreen mode, or to `false` to return to windowed mode.
     ///
-    /// If `can_set_fullscreen` is `false`, then attempting to set this property should have no effect,
-    /// and may raise an error. However, even if it is `true`, the media player may still be unable
-    /// to fulfil the request, in which case attempting to set this property will have no effect
-    /// (but should not raise an error).
+    /// If `can_set_fullscreen` is `false`, then attempting to set this property should have no
+    /// effect, and may raise an error. However, even if it is `true`, the media player may still be
+    /// unable to fulfil the request, in which case attempting to set this property will have no
+    /// effect (but should not raise an error).
     ///
     /// When this property changes, the `org.freedesktop.DBus.Properties.PropertiesChanged` signal
     /// is emitted with the new value.
     ///
     /// This property is optional.
     pub fn set_fullscreen(&self, value: bool) -> Result<()> {
-        self.dbus_conn.set_prop("/org/mpris/MediaPlayer2",
-                                "Fullscreen",
-                                MessageItem::Bool(value))
+        self.dbus_conn.set_prop(
+            "/org/mpris/MediaPlayer2",
+            "Fullscreen",
+            MessageItem::Bool(value),
+        )
     }
 }

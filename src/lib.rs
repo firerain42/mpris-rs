@@ -163,9 +163,11 @@ impl<'a> Metadata<'a> {
 }
 
 /// (Maybe) appends an `MessageItem` with its name to a dictionary
-fn add_item<M: Into<MessageItem>>(items: &mut Vec<Result<(String, MessageItem), ()>>,
-                                  name: &str,
-                                  value: Option<M>) {
+fn add_item<M: Into<MessageItem>>(
+    items: &mut Vec<Result<(String, MessageItem), ()>>,
+    name: &str,
+    value: Option<M>,
+) {
     if let Some(i) = value {
         items.push(Ok((name.to_string(), i.into())));
     }
