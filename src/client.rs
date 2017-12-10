@@ -1,6 +1,5 @@
-use dbus::{BusType, Connection, Message, Props, PropHandler, MessageItem};
+use dbus::{BusType, Connection, Message, Props, MessageItem};
 use std::rc::Rc;
-use std::collections::BTreeMap;
 
 use errors::*;
 
@@ -39,15 +38,8 @@ impl DBusConn {
                               self.timeout);
         match prop.get(member) {
             Ok(msg_item) => Ok(Some(msg_item)),
-            Err(e) => {
-                if e.message()
-                    .map(|msg| msg.contains("was not found"))
-                    .unwrap_or(false) {
-                    Ok(None)
-                } else {
-                    Err(e.into())
-                }
-            }
+            Err(ref e) if match_dbus_err(&e, "DBus.Error.UnknownProperty") => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 
