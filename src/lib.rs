@@ -22,7 +22,7 @@ use std::convert::From;
 use dbus::{Path, MessageItem};
 
 pub mod client;
-mod errors;
+pub mod errors;
 
 
 /// A playback state.

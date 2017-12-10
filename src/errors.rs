@@ -10,6 +10,10 @@ error_chain! {
             description("general error")
             display("general error: {}", msg)
         }
+        AccessedAbsentOptionalProperty(obj_path: String, member: String) {
+            description("optional property is not present, but was accessed")
+            display("accessed absent optional property: '{}' '{}'", obj_path, member)
+        }
     }
 }
 

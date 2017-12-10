@@ -50,13 +50,23 @@ impl DBusConn {
     }
 
     fn set_prop(&self, obj_path: &str, member: &str, value: MessageItem) -> Result<()> {
-        let prop = Props::new(&self.conn,
-                              &self.bus_name,
-                              obj_path,
-                              "org.mpris.MediaPlayer2",
-                              self.timeout);
-        prop.set(member, value)?;
-        Ok(())
+        let prop = Props::new(
+            &self.conn,
+            &self.bus_name,
+            obj_path,
+            "org.mpris.MediaPlayer2",
+            self.timeout,
+        );
+        match prop.set(member, value) {
+            Ok(..) => Ok(()),
+            Err(ref e) if match_dbus_err(e, "DBus.Error.UnknownProperty") => {
+                bail!(ErrorKind::AccessedAbsentOptionalProperty(
+                    obj_path.to_string(),
+                    member.to_string(),
+                ))
+            }
+            Err(e) => bail!(e),
+        }
     }
 
 
