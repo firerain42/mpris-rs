@@ -26,7 +26,7 @@ pub mod errors;
 
 
 /// A playback state.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlaybackStatus {
     /// A track is currently playing.
     Playing,
@@ -58,7 +58,7 @@ impl Into<MessageItem> for PlaybackStatus {
 }
 
 /// A repeat / loop status
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LoopStatus {
     /// The playback will stop when there are no more tracks to play
     None,
@@ -79,7 +79,7 @@ impl Into<MessageItem> for LoopStatus {
 }
 
 /// The metadata of a track
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Metadata {
     // MPRIS-specific
     /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
