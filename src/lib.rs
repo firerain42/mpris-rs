@@ -80,10 +80,10 @@ impl Into<MessageItem> for LoopStatus {
 
 /// The metadata of a track
 #[derive(Debug, Clone)]
-pub struct Metadata<'a> {
+pub struct Metadata {
     // MPRIS-specific
     /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
-    pub trackid: Path<'a>,
+    pub trackid: String,
     /// The duration of the track in microseconds.
     pub length: Option<u64>,
     /// The location of an image representing the track or album. Clients should not assume this
@@ -132,10 +132,10 @@ pub struct Metadata<'a> {
     pub user_rating: Option<f64>,
 }
 
-impl<'a> Metadata<'a> {
-    pub fn new(trackid: Path<'a>) -> Self {
+impl Metadata {
+    pub fn new(trackid: &str) -> Self {
         Metadata {
-            trackid: trackid,
+            trackid: trackid.to_string(),
             length: None,
             art_url: None,
 
@@ -183,8 +183,8 @@ fn vec2mi(vec: Vec<String>) -> MessageItem {
     (&vec as &[String]).into()
 }
 
-impl<'a> From<Metadata<'a>> for MessageItem {
-    fn from(md: Metadata<'a>) -> MessageItem {
+impl From<Metadata> for MessageItem {
+    fn from(md: Metadata) -> MessageItem {
         let mut items: Vec<Result<(String, MessageItem), _>> = Vec::new();
 
         let static_trackid: Path<'static> = (&md.trackid).to_string().into();
@@ -215,3 +215,5 @@ impl<'a> From<Metadata<'a>> for MessageItem {
         MessageItem::from_dict(items.into_iter()).unwrap()
     }
 }
+
+
