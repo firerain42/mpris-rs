@@ -16,14 +16,64 @@ extern crate time;
 #[macro_use]
 extern crate error_chain;
 
-use std::vec::Vec;
-use std::convert::From;
-
-use dbus::{Path, MessageItem};
 
 pub mod client;
 pub mod errors;
 
+
+use dbus::{Path, MessageItem};
+use std::vec::Vec;
+use std::convert::From;
+
+
+/// A unique resource identifier.
+type Uri = String;
+
+/// A playback rate
+///
+/// This is a multiplier, so a value of 0.5 indicates that playback is happening at half speed,
+/// while 1.5 means that 1.5 seconds of "track time" is consumed every second.
+type PlaybackRate = f64;
+
+/// Audio volume level
+///
+/// 0.0 means mute.
+/// 1.0 is a sensible maximum volume level (ex: 0dB).
+///
+/// Note that the volume may be higher than 1.0, although generally clients should not attempt to
+/// set it above 1.0.
+type Volume = f64;
+
+/// Time in microseconds.
+type TimeInUs = f64;
+
+
+/// Unique track identifier.
+///
+/// If the media player implements the TrackList interface and allows the same track to appear
+/// multiple times in the tracklist, this must be unique within the scope of the tracklist.
+///
+/// Note that this should be a valid D-Bus object id, although clients should not assume that any
+/// object is actually exported with any interfaces at that path.
+///
+/// Media players may not use any paths starting with `/org/mpris` unless explicitly allowed by this
+/// specification. Such paths are intended to have special meaning, such as
+/// `/org/mpris/MediaPlayer2/TrackList/NoTrack` to indicate "no track".
+#[derive(Debug, Clone, PartialEq)]
+struct TrackId {
+    track_id: String,
+}
+
+impl TrackId {
+    /// Creates new instance.
+    fn new(track_id: &str) -> ::errors::Result<Self> {
+        if !Path::new(track_id).is_ok() {
+            Err(bail!("Invalid dbus path."))
+        } else {
+            Ok(TrackId { track_id: track_id.to_string() })
+        }
+    }
+}
 
 /// A playback state.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,7 +130,7 @@ impl Into<MessageItem> for LoopStatus {
 
 /// The metadata of a track
 #[derive(Debug, Clone, PartialEq)]
-pub struct Metadata {
+pub struct MetadataMap {
     // MPRIS-specific
     /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
     pub trackid: String,
@@ -132,9 +182,9 @@ pub struct Metadata {
     pub user_rating: Option<f64>,
 }
 
-impl Metadata {
+impl MetadataMap {
     pub fn new(trackid: &str) -> Self {
-        Metadata {
+        MetadataMap {
             trackid: trackid.to_string(),
             length: None,
             art_url: None,
@@ -183,8 +233,8 @@ fn vec2mi(vec: Vec<String>) -> MessageItem {
     (&vec as &[String]).into()
 }
 
-impl From<Metadata> for MessageItem {
-    fn from(md: Metadata) -> MessageItem {
+impl From<MetadataMap> for MessageItem {
+    fn from(md: MetadataMap) -> MessageItem {
         let mut items: Vec<Result<(String, MessageItem), _>> = Vec::new();
 
         let static_trackid: Path<'static> = (&md.trackid).to_string().into();
@@ -215,5 +265,7 @@ impl From<Metadata> for MessageItem {
         MessageItem::from_dict(items.into_iter()).unwrap()
     }
 }
+
+
 
 
