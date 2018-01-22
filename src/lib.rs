@@ -64,18 +64,26 @@ type TimeInUs = f64;
 /// specification. Such paths are intended to have special meaning, such as
 /// `/org/mpris/MediaPlayer2/TrackList/NoTrack` to indicate "no track".
 #[derive(Debug, Clone, PartialEq)]
-struct TrackId {
+pub struct TrackId {
     track_id: String,
 }
 
-impl TrackId {
+impl FromStr for TrackId {
+    type Err = Error;
+
     /// Creates new instance.
-    fn new(track_id: &str) -> ::errors::Result<Self> {
+    fn from_str(track_id: &str) -> Result<Self> {
         if !Path::new(track_id).is_ok() {
-            Err(bail!("Invalid dbus path."))
+            bail!(ErrorKind::TypeBuildError)
         } else {
             Ok(TrackId { track_id: track_id.to_string() })
         }
+    }
+}
+
+impl AsRef<str> for TrackId {
+    fn as_ref(&self) -> &str {
+        &self.track_id
     }
 }
 
@@ -90,13 +98,15 @@ pub enum PlaybackStatus {
     Stopped,
 }
 
-impl PlaybackStatus {
-    pub fn from_str(s: &str) -> Option<PlaybackStatus> {
+impl FromStr for PlaybackStatus {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<PlaybackStatus> {
         match s.to_lowercase().as_str() {
-            "playing" => Some(PlaybackStatus::Playing),
-            "paused" => Some(PlaybackStatus::Paused),
-            "stopped" => Some(PlaybackStatus::Stopped),
-            _ => None,       // 'forward-seek', 'reverse-seek' and 'error' are ignored
+            "playing" => Ok(PlaybackStatus::Playing),
+            "paused" => Ok(PlaybackStatus::Paused),
+            "stopped" => Ok(PlaybackStatus::Stopped),
+            _ => bail!(ErrorKind::TypeBuildError),       // 'forward-seek', 'reverse-seek' and 'error' are ignored
         }
     }
 }
@@ -120,6 +130,19 @@ pub enum LoopStatus {
     Track,
     /// The playback loops through a list of tracks
     Playlist,
+}
+
+impl FromStr for  LoopStatus {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<LoopStatus> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(LoopStatus::None),
+            "track" => Ok(LoopStatus::Track),
+            "playlist" => Ok(LoopStatus::Playlist),
+            _ => bail!(ErrorKind::TypeBuildError),
+        }
+    }
 }
 
 impl Into<MessageItem> for LoopStatus {

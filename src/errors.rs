@@ -14,6 +14,10 @@ error_chain! {
             description("optional property is not present, but was accessed")
             display("accessed absent optional property: '{}' '{}'", obj_path, member)
         }
+        TypeBuildError {
+            description("could not build type")
+            display("could not build type")
+        }
     }
 }
 
