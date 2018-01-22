@@ -1,4 +1,5 @@
 //! This module contains the error handling code.
+use std::fmt::Debug;
 
 
 error_chain! {
@@ -18,6 +19,21 @@ error_chain! {
             description("could not build type")
             display("could not build type {} from '{}'", from, to)
         }
+        TypeCastError(from: String, to: &'static str) {
+            description("could not cast type")
+            display("could not cast type '{:?}' to {}", from, to)
+        }
+    }
+}
+
+pub(crate) trait DebugStr {
+    /// Returns the Debug string
+    fn to_debug_str(&self) -> String;
+}
+
+impl<D> DebugStr for D where D: Debug {
+    fn to_debug_str(&self) -> String {
+        format!("{:?}", self)
     }
 }
 
