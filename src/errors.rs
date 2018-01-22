@@ -14,9 +14,9 @@ error_chain! {
             description("optional property is not present, but was accessed")
             display("accessed absent optional property: '{}' '{}'", obj_path, member)
         }
-        TypeBuildError {
+        TypeBuildError(from: &'static str, to: String) {
             description("could not build type")
-            display("could not build type")
+            display("could not build type {} from '{}'", from, to)
         }
     }
 }

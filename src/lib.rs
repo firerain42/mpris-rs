@@ -74,7 +74,7 @@ impl FromStr for TrackId {
     /// Creates new instance.
     fn from_str(track_id: &str) -> Result<Self> {
         if !Path::new(track_id).is_ok() {
-            bail!(ErrorKind::TypeBuildError)
+            bail!(ErrorKind::TypeBuildError(stringify!(TrackId), track_id.to_string()))
         } else {
             Ok(TrackId { track_id: track_id.to_string() })
         }
@@ -106,7 +106,8 @@ impl FromStr for PlaybackStatus {
             "playing" => Ok(PlaybackStatus::Playing),
             "paused" => Ok(PlaybackStatus::Paused),
             "stopped" => Ok(PlaybackStatus::Stopped),
-            _ => bail!(ErrorKind::TypeBuildError),       // 'forward-seek', 'reverse-seek' and 'error' are ignored
+            _ => bail!(ErrorKind::TypeBuildError(stringify!(PlaybackStatus), s.to_string())),
+                // 'forward-seek', 'reverse-seek' and 'error' are ignored
         }
     }
 }
@@ -140,7 +141,7 @@ impl FromStr for  LoopStatus {
             "none" => Ok(LoopStatus::None),
             "track" => Ok(LoopStatus::Track),
             "playlist" => Ok(LoopStatus::Playlist),
-            _ => bail!(ErrorKind::TypeBuildError),
+            _ => bail!(ErrorKind::TypeBuildError(stringify!(LoopStatus), s.to_string()))
         }
     }
 }
