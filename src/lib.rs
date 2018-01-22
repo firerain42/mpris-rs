@@ -22,8 +22,12 @@ pub mod errors;
 
 
 use dbus::{Path, MessageItem};
-use std::vec::Vec;
-use std::convert::From;
+use dbus::arg::RefArg;
+use chrono::{Utc, DateTime};
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::rc::Rc;
+use errors::*;
 
 
 /// A unique resource identifier.
@@ -129,143 +133,186 @@ impl Into<MessageItem> for LoopStatus {
 }
 
 /// The metadata of a track
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MetadataMap {
-    // MPRIS-specific
-    /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
-    pub trackid: String,
-    /// The duration of the track in microseconds.
-    pub length: Option<u64>,
-    /// The location of an image representing the track or album. Clients should not assume this
-    /// will continue to exist when the media player stops giving out the URL.
-    pub art_url: Option<String>,
-
-    // Common Xesam properties
-    /// The album name.
-    pub album: Option<String>,
-    /// The album name.
-    pub album_artist: Option<Vec<String>>,
-    /// The album artist(s).
-    pub artist: Option<Vec<String>>,
-    /// The track artist(s).
-    pub as_text: Option<String>,
-    /// The track lyrics.
-    pub audio_bpm: Option<u32>,
-    /// The speed of the music, in beats per minute.
-    pub auto_rating: Option<f64>,
-    /// An automatically-generated rating, based on things such as how often it has been played.
-    /// This should be in the range 0.0 to 1.0.
-    pub comment: Option<Vec<String>>,
-    /// A (list of) freeform comment(s).
-    pub composer: Option<Vec<String>>,
-    /// The composer(s) of the track.
-    pub content_created: Option<time::Tm>,
-    /// When the track was created. Usually only the year component will be useful.
-    pub disc_number: Option<u32>,
-    /// The disc number on the album that this track is from.
-    pub first_used: Option<time::Tm>,
-    /// When the track was first played.
-    pub genre: Option<Vec<String>>,
-    /// The genre(s) of the track.
-    pub last_used: Option<time::Tm>,
-    /// When the track was last played.
-    pub lyricist: Option<Vec<String>>,
-    /// The lyricist(s) of the track.
-    pub title: Option<String>,
-    /// The track title.
-    pub track_number: Option<u32>,
-    /// The location of the media file.
-    pub url: Option<String>,
-    /// The number of times the track has been played.
-    pub use_count: Option<u32>,
-    /// A user-specified rating. This should be in the range 0.0 to 1.0.
-    pub user_rating: Option<f64>,
+    trackid: TrackId,
+    raw_map: HashMap<String, Rc<RefArg>>,
 }
 
 impl MetadataMap {
-    pub fn new(trackid: &str) -> Self {
-        MetadataMap {
-            trackid: trackid.to_string(),
-            length: None,
-            art_url: None,
 
-            album: None,
-            album_artist: None,
-            artist: None,
-            as_text: None,
-            audio_bpm: None,
-            auto_rating: None,
-            comment: None,
-            composer: None,
-            content_created: None,
-            disc_number: None,
-            first_used: None,
-            genre: None,
-            last_used: None,
-            lyricist: None,
-            title: None,
-            track_number: None,
-            url: None,
-            use_count: None,
-            user_rating: None,
+    /// Creates a new `MetadataMap` from a Map of names and variants.
+    pub fn from_map(raw_map: HashMap<String, Rc<RefArg>>) -> Result<Self> {
+        let trackid;
+        if let Some(track_id) = raw_map.get("mpris:trackid") {
+            let track_id_str = track_id.as_str().chain_err(|| "Could not cast to str.")?;
+            trackid = TrackId::from_str(track_id_str)?;
+        } else {
+            bail!("Mandatory 'mpris:trackid' is not present. Could not construct MetadataMap.");
         }
+
+        Ok(MetadataMap { trackid , raw_map })
+    }
+
+    // MPRIS-specific
+    /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
+    pub fn trackid(&self) -> &TrackId { &self.trackid }
+    /// The duration of the track in microseconds.
+    pub fn length(&self) -> Option<TimeInUs> {
+        use ::dbus::arg::cast;
+
+        let argref = self.raw_map.get("mpris:length")?;
+        Some(cast::<TimeInUs>(argref)?.clone())
+    }
+    /// The location of an image representing the track or album. Clients should not assume this
+    /// will continue to exist when the media player stops giving out the URL.
+    pub fn art_url(&self) -> Option<Uri> {
+        unimplemented!();
+    }
+
+    // Common Xesam properties
+    /// The album name.
+    pub fn album(&self) -> Option<String> {
+        unimplemented!();
+    }
+    /// The album artist(s).
+    pub fn album_artist(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// The track artist(s).
+    pub fn artist(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// The track lyrics.
+    pub fn as_text(&self) -> Option<String> {
+        unimplemented!();
+    }
+    /// The speed of the music, in beats per minute.
+    pub fn audio_bpm(&self) -> Option<u32> {
+        unimplemented!();
+    }
+    /// An automatically-generated rating, based on things such as how often it has been played.
+    /// This should be in the range 0.0 to 1.0.
+    pub fn auto_rating(&self) -> Option<f64> {
+        unimplemented!();
+    }
+    /// A (list of) freeform comment(s).
+    pub fn comment(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// The composer(s) of the track.
+    pub fn composer(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// When the track was created. Usually only the year component will be useful.
+    pub fn content_created(&self) -> Option<DateTime<Utc>> {
+        unimplemented!();
+    }
+    /// The disc number on the album that this track is from.
+    pub fn disc_number(&self) -> Option<u32> {
+        unimplemented!();
+    }
+    /// When the track was first played.
+    pub fn first_used(&self) -> Option<DateTime<Utc>> {
+        unimplemented!();
+    }
+    /// The genre(s) of the track.
+    pub fn genre(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// When the track was last played.
+    pub fn last_used(&self) -> Option<DateTime<Utc>> {
+        unimplemented!();
+    }
+    /// The lyricist(s) of the track.
+    pub fn lyricist(&self) -> Option<Vec<String>> {
+        unimplemented!();
+    }
+    /// The track title.
+    pub fn title(&self) -> Option<String> {
+        unimplemented!();
+    }
+    /// The location of the media file.
+    pub fn track_number(&self) -> Option<u32> {
+        unimplemented!();
+    }
+    /// The location of the media file.
+    pub fn url(&self) -> Option<Uri> {
+        unimplemented!();
+    }
+    /// The number of times the track has been played.
+    pub fn use_count(&self) -> Option<u32> {
+        unimplemented!();
+    }
+    /// A user-specified rating. This should be in the range 0.0 to 1.0.
+    pub fn user_rating(&self) -> Option<f64> {
+        unimplemented!();
     }
 }
 
-/// (Maybe) appends an `MessageItem` with its name to a dictionary
-fn add_item<M: Into<MessageItem>>(
-    items: &mut Vec<Result<(String, MessageItem), ()>>,
-    name: &str,
-    value: Option<M>,
-) {
-    if let Some(i) = value {
-        items.push(Ok((name.to_string(), i.into())));
-    }
-}
-
-/// Converts a datetime to a `MessageItem`
-fn dt2mi(dt: time::Tm) -> MessageItem {
-    format!("{}", dt.rfc3339()).into()
-}
-
-/// Converts a vector to a `MessageItem`
-fn vec2mi(vec: Vec<String>) -> MessageItem {
-    (&vec as &[String]).into()
-}
-
-impl From<MetadataMap> for MessageItem {
-    fn from(md: MetadataMap) -> MessageItem {
-        let mut items: Vec<Result<(String, MessageItem), _>> = Vec::new();
-
-        let static_trackid: Path<'static> = (&md.trackid).to_string().into();
-        items.push(Ok(("trackid".to_string(), static_trackid.into())));
-
-        add_item(&mut items, "length", md.length);
-        add_item(&mut items, "art_url", md.art_url);
-        add_item(&mut items, "album", md.album);
-        add_item(&mut items, "album_artist", md.album_artist.map(vec2mi));
-        add_item(&mut items, "artist", md.artist.map(vec2mi));
-        add_item(&mut items, "as_text", md.as_text);
-        add_item(&mut items, "audio_bpm", md.audio_bpm);
-        add_item(&mut items, "auto_rating", md.auto_rating);
-        add_item(&mut items, "comment", md.comment.map(vec2mi));
-        add_item(&mut items, "composer", md.composer.map(vec2mi));
-        add_item(&mut items, "content_created", md.content_created.map(dt2mi));
-        add_item(&mut items, "disc_number", md.disc_number);
-        add_item(&mut items, "first_used", md.first_used.map(dt2mi));
-        add_item(&mut items, "genre", md.genre.map(vec2mi));
-        add_item(&mut items, "last_used", md.last_used.map(dt2mi));
-        add_item(&mut items, "lyricist", md.lyricist.map(vec2mi));
-        add_item(&mut items, "title", md.title);
-        add_item(&mut items, "track_number", md.track_number);
-        add_item(&mut items, "url", md.url);
-        add_item(&mut items, "use_count", md.use_count);
-        add_item(&mut items, "user_rating", md.user_rating);
-
-        MessageItem::from_dict(items.into_iter()).unwrap()
+impl PartialEq for MetadataMap {
+    fn eq(&self, other: &MetadataMap) -> bool {
+        self.trackid == other.trackid
     }
 }
 
 
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+    use std::rc::Rc;
+    use dbus::arg::RefArg;
+    use std::str::FromStr;
+    use super::*;
 
+    fn test_MetadataMap() {
+        let mut example_map: HashMap<String, Rc<RefArg>> = HashMap::with_capacity(22);
+        example_map.insert("mpris:trackid".to_string(), Rc::new("/foo/bar/baz".to_string()));
+        example_map.insert("mpris:length".to_string(), Rc::new(23 as super::TimeInUs));
+        example_map.insert("mpris:artUrl".to_string(), Rc::new("/example/dir/art.png".to_string()));
+        example_map.insert("xesam:album".to_string(), Rc::new("example album".to_string()));
+        example_map.insert("xesam:albumArtist".to_string(), Rc::new(vec!["example album artist".to_string()]));
+        example_map.insert("xesam:artist".to_string(), Rc::new(vec!["example artist".to_string()]));
+        example_map.insert("xesam:asText".to_string(), Rc::new("example text".to_string()));
+        example_map.insert("xesam:audioBPM".to_string(), Rc::new(23));
+        example_map.insert("xesam:autoRating".to_string(), Rc::new(0.31415));
+        example_map.insert("xesam:comment".to_string(), Rc::new(vec!["example comment".to_string()]));
+        example_map.insert("xesam:composer".to_string(), Rc::new(vec!["example composer".to_string()]));
+        example_map.insert("xesam:contentCreated".to_string(), Rc::new("2007-04-29T13:56+01:00".to_string()));
+        example_map.insert("xesam:discNumber".to_string(), Rc::new(42));
+        example_map.insert("xesam:firstUsed".to_string(), Rc::new("2008-04-29T13:56+01:00".to_string()));
+        example_map.insert("xesam:genre".to_string(), Rc::new(vec!["example genre".to_string()]));
+        example_map.insert("xesam:lastUsed".to_string(), Rc::new("2009-04-29T13:56+01:00".to_string()));
+        example_map.insert("xesam:lyricist".to_string(), Rc::new(vec!["example lyricist".to_string()]));
+        example_map.insert("xesam:title".to_string(), Rc::new("example title".to_string()));
+        example_map.insert("xesam:trackNumber".to_string(), Rc::new(23));
+        example_map.insert("xesam:url".to_string(), Rc::new("/example/dir/url.mp3".to_string()));
+        example_map.insert("xesam:useCount".to_string(), Rc::new(42));
+        example_map.insert("xesam:userRating".to_string(), Rc::new(0.31415));
 
+        let mmap = MetadataMap::from_map(example_map).unwrap();
+        assert_eq!(mmap.trackid(), &TrackId::from_str("/foo/bar/baz").unwrap());
+
+        assert_eq!(mmap.length(), Some(23 as super::TimeInUs));
+        assert_eq!(mmap.art_url(), Some("/example/dir/art.png".to_string()));
+        assert_eq!(mmap.album(), Some("example album".to_string()));
+        assert_eq!(mmap.album_artist(), Some(vec!["example album artist".to_string()]));
+        assert_eq!(mmap.artist(), Some(vec!["example artist".to_string()]));
+        assert_eq!(mmap.as_text(), Some("example text".to_string()));
+        assert_eq!(mmap.audio_bpm(), Some(23));
+        assert_eq!(mmap.auto_rating(), Some(0.31415));
+        assert_eq!(mmap.comment(), Some(vec!["example comment".to_string()]));
+        assert_eq!(mmap.composer(), Some(vec!["example composer".to_string()]));
+        assert_eq!(mmap.content_created(), Some(FromStr::from_str("2007-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.disc_number(), Some(42));
+        assert_eq!(mmap.first_used(), Some(FromStr::from_str("2008-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.genre(), Some(vec!["example genre".to_string()]));
+        assert_eq!(mmap.last_used(), Some(FromStr::from_str("2009-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.lyricist(), Some(vec!["example lyricist".to_string()]));
+        assert_eq!(mmap.title(), Some("example title".to_string()));
+        assert_eq!(mmap.track_number(), Some(23));
+        assert_eq!(mmap.url(), Some("/example/dir/url.mp3".to_string()));
+        assert_eq!(mmap.use_count(), Some(42));
+        assert_eq!(mmap.user_rating(), Some(0.31415));
+    }
+}
