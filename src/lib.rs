@@ -12,7 +12,7 @@
 #![recursion_limit = "1024"]
 
 extern crate dbus;
-extern crate time;
+extern crate chrono;
 #[macro_use]
 extern crate error_chain;
 

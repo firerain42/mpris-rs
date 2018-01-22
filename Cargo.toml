@@ -6,5 +6,5 @@ license = "MIT"
 
 [dependencies]
 dbus        = "0.6"
-time        = "0.1"
+chrono      = "0.4"
 error-chain = "0.11"
