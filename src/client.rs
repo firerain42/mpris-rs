@@ -1,5 +1,8 @@
 use dbus::{BusType, Connection, Message, Props, MessageItem, MessageType};
+use dbus::arg::{RefArg, Variant};
 use std::rc::Rc;
+use std::str::FromStr;
+use std::collections::HashMap;
 
 use errors::*;
 
@@ -217,6 +220,10 @@ impl MprisRoot {
         self.dbus_conn.conn.add_match(
             "interface='org.mpris.MediaPlayer2.Player',member='Seeked'",
         )?;
+        self.dbus_conn.conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'",
+        )?;
+
 
         Ok(MprisSignals::new(self.dbus_conn.clone(), timeout_ms))
     }
@@ -245,7 +252,10 @@ impl Iterator for MprisSignals {
             .incoming(self.timeout_ms)
             .filter(|msg| {
                 msg.msg_type() == MessageType::Signal
-                    && msg.interface() == Some("org.mpris.MediaPlayer2.Player".into())
+            })
+            .filter(|msg| {
+                msg.interface() == Some("org.mpris.MediaPlayer2.Player".into())
+                    || msg.interface() == Some("org.freedesktop.DBus.Properties".into())
             })
             .filter_map(|msg| {
                 if let Some(member) = msg.member() {
@@ -255,7 +265,23 @@ impl Iterator for MprisSignals {
                                 Some(MprisSignal::Seeked { position: pos })
                             } else { None }
                         }
-                        _ => None,
+                        "PropertiesChanged" => {
+                            if let (Some(interface),
+                                Some(ch_props),
+                                Some(invalidated_properties)) =
+                            msg.get3::<_, HashMap<String, Variant<Box<RefArg>>>, _>() {
+                                let changed_properties = ch_props
+                                    .into_iter()
+                                    .filter_map(|(n, mut v)| ChangedProperty::from_variant(n, &mut v).ok())
+                                    .collect();
+                                Some(MprisSignal::PropertiesChanged {
+                                    interface,
+                                    changed_properties,
+                                    invalidated_properties,
+                                })
+                            } else { None }
+                        }
+                        member => Some(MprisSignal::Other(member.to_string(), msg.get_items())),
                     }
                 } else { None }
             }).next()
@@ -263,7 +289,124 @@ impl Iterator for MprisSignals {
 }
 
 /// Enum for the signals emitted by an MPRIS interface.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum MprisSignal {
     Seeked { position: i64 },
+    PropertiesChanged {
+        interface: String,
+        changed_properties: Vec<ChangedProperty>,
+        invalidated_properties: Vec<String>,
+    },
+    Other(String, Vec<MessageItem>),
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ChangedProperty {
+    // Mpris root properties
+    CanQuit(bool),
+    Fullscreen(bool),
+    CanSetFullscreen(bool),
+    CanRaise(bool),
+    HasTrackList(bool),
+    Identity(String),
+    DesktopEntry(String),
+    SupportedUriSchemes(Vec<String>),
+    SupportedMimeTypes(Vec<String>),
+
+    // Mpris Player properties
+    PlaybackStatus(::PlaybackStatus),
+    LoopStatus(::LoopStatus),
+    Rate(::PlaybackRate),
+    Shuffle(bool),
+    Metadata(::MetadataMap),
+    Volume(::Volume),
+    MinimumRate(::PlaybackRate),
+    MaximumRate(::PlaybackRate),
+    CanGoNext(bool),
+    CanGoPrevious(bool),
+    CanPlay(bool),
+    CanPause(bool),
+    CanSeek(bool),
+
+    // Mpris TrackList properties
+    Tracks,
+    CanEditTracks(bool),
+
+    // Mpris Playlists properties
+//    PlaylistCount(u32),
+//    Orderings(Vec<String>),
+//    // fixme Add appropriate type
+//    ActivePlaylist(String, String, String),
+
+    Other(String),
+}
+
+impl ChangedProperty {
+    fn from_variant(name: String, data: &mut Variant<Box<RefArg>>) -> Result<Self> {
+        use client::ChangedProperty::*;
+
+        let res = match &name as &str {
+            // Mpris root properties
+            "CanQuit" => CanQuit(cast_var(&data)?),
+            "Fullscreen" => Fullscreen(cast_var(&data)?),
+            "CanSetFullscreen" => CanSetFullscreen(cast_var(&data)?),
+            "CanRaise" => CanRaise(cast_var(&data)?),
+            "HasTrackList" => HasTrackList(cast_var(&data)?),
+            "Identity" => Identity(cast_var_to_str(&data)?.to_string()),
+            "DesktopEntry" => DesktopEntry(cast_var_to_str(&data)?.to_string()),
+            "SupportedUriSchemes" => SupportedUriSchemes(cast_var::<Vec<String>>(&data)?.clone()),
+            "SupportedMimeTypes" => SupportedMimeTypes(cast_var::<Vec<String>>(&data)?.clone()),
+
+            // Mpris Player properties
+            "PlaybackStatus" => PlaybackStatus(::PlaybackStatus::from_str(cast_var_to_str(&data)?)?),
+            "LoopStatus" => LoopStatus(::LoopStatus::from_str(cast_var_to_str(&data)?)?),
+            "Rate" => Rate(cast_var(&data)?),
+            "Shuffle" => Shuffle(cast_var(&data)?),
+            "Metadata" => {
+                if let Some(raw_map_variant) = ::dbus::arg::cast_mut::<HashMap<String, Variant<Box<RefArg>>>>(&mut data.0) {
+                    let raw_map: HashMap<String, Rc<RefArg>> = raw_map_variant.into_iter()
+                        .map(|(k, v)| {
+                            let value_data: Box<RefArg> = ::std::mem::replace(&mut v.0, Box::new(false));
+                            (k.to_string(), value_data.into())
+                        })
+                        .collect();
+
+                    return Ok(Metadata(::MetadataMap::from_map(raw_map)?));
+                }
+                bail!(ErrorKind::TypeCastError(data.to_debug_str(), "HashMap"));
+            }
+            "Volume" => Volume(cast_var(&data)?),
+            "MinimumRate" => MinimumRate(cast_var(&data)?),
+            "MaximumRate" => MaximumRate(cast_var(&data)?),
+            "CanGoNext" => CanGoNext(cast_var(&data)?),
+            "CanGoPrevious" => CanGoPrevious(cast_var(&data)?),
+            "CanPlay" => CanPlay(cast_var(&data)?),
+            "CanPause" => CanPause(cast_var(&data)?),
+            "CanSeek" => CanSeek(cast_var(&data)?),
+
+            // Mpris TrackList properties
+            "Tracks" => Tracks,
+            "CanEditTracks" => CanEditTracks(cast_var(&data)?),
+
+            // Mpris Playlists properties
+            // "PlaylistCount" => PlaylistCount(*data.as_any().downcast_ref::<u32>()?),
+            // "Orderings" => Orderings(*data.as_any().downcast_ref::<Vec<String>>()?),
+            // "ActivePlaylist" => ActivePlaylist( ... ),
+            _ => Other(format!("{:?}", data.0)),
+        };
+
+        Ok(res)
+    }
+}
+
+
+fn cast_var_to_str(var: &Variant<Box<RefArg>>) -> Result<&str> {
+    var.0.as_str().ok_or(ErrorKind::TypeCastError(var.to_debug_str(), "&str").into())
+}
+
+fn cast_var<T: Clone + 'static>(var: &Variant<Box<RefArg>>) -> Result<T> {
+    ::dbus::arg::cast::<T>(&var.0)
+        .map(Clone::clone)
+        .ok_or(ErrorKind::TypeCastError(var.to_debug_str(), stringify!(T)).into())
+}
+
