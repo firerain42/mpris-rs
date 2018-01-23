@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use errors::*;
 
+#[derive(Debug)]
 struct DBusConn {
     conn: Connection,
     bus_name: String,
@@ -47,7 +48,7 @@ impl DBusConn {
         );
         match prop.get(member) {
             Ok(msg_item) => Ok(Some(msg_item)),
-            Err(ref e) if match_dbus_err(&e, "DBus.Error.UnknownProperty") => Ok(None),
+            Err(ref e) if match_dbus_err(e, "DBus.Error.UnknownProperty") => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -87,7 +88,7 @@ impl DBusConn {
     }
 }
 
-
+#[derive(Debug)]
 pub struct MprisClient {
     dbus_conn: Rc<DBusConn>,
 
@@ -109,6 +110,7 @@ impl MprisClient {
 }
 
 
+#[derive(Debug)]
 pub struct MprisRoot {
     dbus_conn: Rc<DBusConn>,
 }
@@ -157,7 +159,7 @@ impl MprisRoot {
                         .into(),
                 )
             }
-            Err(err) => Err(err.into()),
+            Err(err) => Err(err),
         }
     }
 
@@ -179,7 +181,7 @@ impl MprisRoot {
         ) {
             Ok(Some(MessageItem::Bool(cq))) => Ok(Some(cq)),
             Ok(None) => Ok(None),
-            Err(err) => Err(err.into()),
+            Err(err) => Err(err),
             Ok(_) => {
                 Err(
                     ErrorKind::GeneralError("Could not get property: unexpected type".to_string())
@@ -272,7 +274,7 @@ impl Iterator for MprisSignals {
                             msg.get3::<_, HashMap<String, Variant<Box<RefArg>>>, _>() {
                                 let changed_properties = ch_props
                                     .into_iter()
-                                    .filter_map(|(n, mut v)| ChangedProperty::from_variant(n, &mut v).ok())
+                                    .filter_map(|(n, mut v)| ChangedProperty::from_variant(&n, &mut v).ok())
                                     .collect();
                                 Some(MprisSignal::PropertiesChanged {
                                     interface,
@@ -342,26 +344,26 @@ pub enum ChangedProperty {
 }
 
 impl ChangedProperty {
-    fn from_variant(name: String, data: &mut Variant<Box<RefArg>>) -> Result<Self> {
+    fn from_variant(name: &str, data: &mut Variant<Box<RefArg>>) -> Result<Self> {
         use client::ChangedProperty::*;
 
-        let res = match &name as &str {
+        let res = match name {
             // Mpris root properties
-            "CanQuit" => CanQuit(cast_var(&data)?),
-            "Fullscreen" => Fullscreen(cast_var(&data)?),
-            "CanSetFullscreen" => CanSetFullscreen(cast_var(&data)?),
-            "CanRaise" => CanRaise(cast_var(&data)?),
-            "HasTrackList" => HasTrackList(cast_var(&data)?),
-            "Identity" => Identity(cast_var_to_str(&data)?.to_string()),
-            "DesktopEntry" => DesktopEntry(cast_var_to_str(&data)?.to_string()),
-            "SupportedUriSchemes" => SupportedUriSchemes(cast_var::<Vec<String>>(&data)?.clone()),
-            "SupportedMimeTypes" => SupportedMimeTypes(cast_var::<Vec<String>>(&data)?.clone()),
+            "CanQuit" => CanQuit(cast_var(data)?),
+            "Fullscreen" => Fullscreen(cast_var(data)?),
+            "CanSetFullscreen" => CanSetFullscreen(cast_var(data)?),
+            "CanRaise" => CanRaise(cast_var(data)?),
+            "HasTrackList" => HasTrackList(cast_var(data)?),
+            "Identity" => Identity(cast_var_to_str(data)?.to_string()),
+            "DesktopEntry" => DesktopEntry(cast_var_to_str(data)?.to_string()),
+            "SupportedUriSchemes" => SupportedUriSchemes(cast_var::<Vec<String>>(data)?.clone()),
+            "SupportedMimeTypes" => SupportedMimeTypes(cast_var::<Vec<String>>(data)?.clone()),
 
             // Mpris Player properties
-            "PlaybackStatus" => PlaybackStatus(::PlaybackStatus::from_str(cast_var_to_str(&data)?)?),
-            "LoopStatus" => LoopStatus(::LoopStatus::from_str(cast_var_to_str(&data)?)?),
-            "Rate" => Rate(cast_var(&data)?),
-            "Shuffle" => Shuffle(cast_var(&data)?),
+            "PlaybackStatus" => PlaybackStatus(::PlaybackStatus::from_str(cast_var_to_str(data)?)?),
+            "LoopStatus" => LoopStatus(::LoopStatus::from_str(cast_var_to_str(data)?)?),
+            "Rate" => Rate(cast_var(data)?),
+            "Shuffle" => Shuffle(cast_var(data)?),
             "Metadata" => {
                 if let Some(raw_map_variant) = ::dbus::arg::cast_mut::<HashMap<String, Variant<Box<RefArg>>>>(&mut data.0) {
                     let raw_map: HashMap<String, Rc<RefArg>> = raw_map_variant.into_iter()
@@ -375,18 +377,18 @@ impl ChangedProperty {
                 }
                 bail!(ErrorKind::TypeCastError(data.to_debug_str(), "HashMap"));
             }
-            "Volume" => Volume(cast_var(&data)?),
-            "MinimumRate" => MinimumRate(cast_var(&data)?),
-            "MaximumRate" => MaximumRate(cast_var(&data)?),
-            "CanGoNext" => CanGoNext(cast_var(&data)?),
-            "CanGoPrevious" => CanGoPrevious(cast_var(&data)?),
-            "CanPlay" => CanPlay(cast_var(&data)?),
-            "CanPause" => CanPause(cast_var(&data)?),
-            "CanSeek" => CanSeek(cast_var(&data)?),
+            "Volume" => Volume(cast_var(data)?),
+            "MinimumRate" => MinimumRate(cast_var(data)?),
+            "MaximumRate" => MaximumRate(cast_var(data)?),
+            "CanGoNext" => CanGoNext(cast_var(data)?),
+            "CanGoPrevious" => CanGoPrevious(cast_var(data)?),
+            "CanPlay" => CanPlay(cast_var(data)?),
+            "CanPause" => CanPause(cast_var(data)?),
+            "CanSeek" => CanSeek(cast_var(data)?),
 
             // Mpris TrackList properties
             "Tracks" => Tracks,
-            "CanEditTracks" => CanEditTracks(cast_var(&data)?),
+            "CanEditTracks" => CanEditTracks(cast_var(data)?),
 
             // Mpris Playlists properties
             // "PlaylistCount" => PlaylistCount(*data.as_any().downcast_ref::<u32>()?),
@@ -401,12 +403,12 @@ impl ChangedProperty {
 
 
 fn cast_var_to_str(var: &Variant<Box<RefArg>>) -> Result<&str> {
-    var.0.as_str().ok_or(ErrorKind::TypeCastError(var.to_debug_str(), "&str").into())
+    var.0.as_str().ok_or_else(|| ErrorKind::TypeCastError(var.to_debug_str(), "&str").into())
 }
 
 fn cast_var<T: Clone + 'static>(var: &Variant<Box<RefArg>>) -> Result<T> {
     ::dbus::arg::cast::<T>(&var.0)
-        .map(Clone::clone)
-        .ok_or(ErrorKind::TypeCastError(var.to_debug_str(), stringify!(T)).into())
+        .cloned()
+        .ok_or_else(||ErrorKind::TypeCastError(var.to_debug_str(), stringify!(T)).into())
 }
 

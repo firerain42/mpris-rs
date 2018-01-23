@@ -54,7 +54,7 @@ type TimeInUs = f64;
 
 /// Unique track identifier.
 ///
-/// If the media player implements the TrackList interface and allows the same track to appear
+/// If the media player implements the `TrackList` interface and allows the same track to appear
 /// multiple times in the tracklist, this must be unique within the scope of the tracklist.
 ///
 /// Note that this should be a valid D-Bus object id, although clients should not assume that any
@@ -186,7 +186,7 @@ impl MetadataMap {
         use ::dbus::arg::cast;
 
         let argref = self.raw_map.get("mpris:length")?;
-        Some(cast::<TimeInUs>(argref)?.clone())
+        Some(*cast::<TimeInUs>(argref)?)
     }
     /// The location of an image representing the track or album. Clients should not assume this
     /// will continue to exist when the media player stops giving out the URL.
