@@ -53,4 +53,10 @@ fn test_fullscreen_optional() {
         Err(e) => panic!("wrong kind of error: {:?}", e),
         Ok(..) => panic!("error expected"),
     }
+
+}
+
+#[test]
+fn test_list_players() {
+    MprisClient::list_players(1000).unwrap();
 }

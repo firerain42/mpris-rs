@@ -6,6 +6,8 @@ use std::collections::HashMap;
 
 use errors::*;
 
+/// Abstraction over the DBUS connection. All interactions with DBUS should go through one of the
+/// methods of this struct.
 #[derive(Debug)]
 struct DBusConn {
     conn: Connection,
@@ -14,6 +16,8 @@ struct DBusConn {
 }
 
 impl DBusConn {
+    /// Calls a DBUS method without returning a value. This method blocks until the call either
+    /// succeeds or fails.
     fn call_method_without_reply(&self, obj_path: &str, member: &str) -> Result<()> {
         let msg =
             Message::new_method_call(&self.bus_name, obj_path, "org.mpris.MediaPlayer2", member)?;
@@ -26,6 +30,7 @@ impl DBusConn {
         Ok(())
     }
 
+    /// Reads a DBUS property.
     fn get_prop(&self, obj_path: &str, member: &str) -> Result<MessageItem> {
         let prop = Props::new(
             &self.conn,
@@ -38,6 +43,7 @@ impl DBusConn {
         Ok(msg_item)
     }
 
+    /// Safely reads an optional DBUS property.
     fn get_optional_prop(&self, obj_path: &str, member: &str) -> Result<Option<MessageItem>> {
         let prop = Props::new(
             &self.conn,
@@ -53,6 +59,7 @@ impl DBusConn {
         }
     }
 
+    /// Writes a DBUS property.
     fn set_prop(&self, obj_path: &str, member: &str, value: MessageItem) -> Result<()> {
         let prop = Props::new(
             &self.conn,
@@ -96,6 +103,10 @@ pub struct MprisClient {
 }
 
 impl MprisClient {
+    /// Creates a new `MprisClient` instance.
+    ///
+    /// `timeout_ms` specifies the maximum time a D-Bus method call blocks. The value -1 disables
+    /// the timeout.
     pub fn new(player_name: &str, timeout_ms: i32) -> Result<Self> {
         let dbus_conn = Rc::new(DBusConn::new(player_name, timeout_ms)?);
 
@@ -107,8 +118,25 @@ impl MprisClient {
             root: MprisRoot::new(dbus_conn_clone),
         })
     }
-}
 
+    /// Lists all available media players.
+    ///
+    /// `timeout_ms` specifies the maximum time a D-Bus method call blocks. The value -1 disables
+    /// the timeout.
+    pub fn list_players(timeout_ms: i32) -> Result<Vec<String>> {
+        let conn = Connection::get_private(BusType::Session)?;
+        let msg = Message::new_method_call("org.freedesktop.DBus",
+                                           "/org/freedesktop/DBus",
+                                           "org.freedesktop.DBus",
+                                           "ListNames").unwrap();
+        let reply = conn.send_with_reply_and_block(msg, timeout_ms)?;
+        let buses: Vec<String> = reply.read1().unwrap();
+        Ok(buses.into_iter()
+            .filter(|bus| { bus.starts_with("org.mpris.MediaPlayer2.") })
+            .map(|bus| { bus[23..].to_string() })
+            .collect())
+    }
+}
 
 #[derive(Debug)]
 pub struct MprisRoot {
@@ -409,6 +437,6 @@ fn cast_var_to_str(var: &Variant<Box<RefArg>>) -> Result<&str> {
 fn cast_var<T: Clone + 'static>(var: &Variant<Box<RefArg>>) -> Result<T> {
     ::dbus::arg::cast::<T>(&var.0)
         .cloned()
-        .ok_or_else(||ErrorKind::TypeCastError(var.to_debug_str(), stringify!(T)).into())
+        .ok_or_else(|| ErrorKind::TypeCastError(var.to_debug_str(), stringify!(T)).into())
 }
 
