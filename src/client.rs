@@ -12,6 +12,7 @@ use errors::*;
 struct DBusConn {
     conn: Connection,
     bus_name: String,
+    unique_bus_name: String,
     timeout: i32,
 }
 
@@ -87,9 +88,39 @@ impl DBusConn {
     /// the timeout.
     fn new(player_name: &str, timeout_ms: i32) -> Result<Self> {
         let conn = Connection::get_private(BusType::Session)?;
+
+        conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'",
+        )?;
+        conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.mpris.MediaPlayer2'",
+        )?;
+        conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.mpris.MediaPlayer2.Player'",
+        )?;
+        conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.mpris.MediaPlayer2.TrackList'",
+        )?;
+        conn.add_match(
+            "path='/org/mpris/MediaPlayer2',interface='org.mpris.MediaPlayer2.Playlists'",
+        )?;
+
+        let bus_name = format!("org.mpris.MediaPlayer2.{}", player_name);
+
+        // get unique bus name
+        let msg = Message::new_method_call("org.freedesktop.DBus",
+                                           "/org/freedesktop/DBus",
+                                           "org.freedesktop.DBus", "GetNameOwner")
+            .expect("Could not construct method call.")
+            .append1(&bus_name);
+        let res = conn.send_with_reply_and_block(msg, timeout_ms)
+            .chain_err(|| ErrorKind::GeneralError("Could not get unique bus name. Does the player exist?".to_string()))?;
+        let unique_name = res.read1().chain_err(|| "Could not convert to String")?;
+
         Ok(DBusConn {
             conn,
-            bus_name: format!("org.mpris.MediaPlayer2.{}", player_name),
+            bus_name,
+            unique_bus_name: unique_name,
             timeout: timeout_ms,
         })
     }
@@ -128,13 +159,20 @@ impl MprisClient {
         let msg = Message::new_method_call("org.freedesktop.DBus",
                                            "/org/freedesktop/DBus",
                                            "org.freedesktop.DBus",
-                                           "ListNames").unwrap();
+                                           "ListNames")
+            .expect("Could not construct method call.");
         let reply = conn.send_with_reply_and_block(msg, timeout_ms)?;
-        let buses: Vec<String> = reply.read1().unwrap();
+        let buses: Vec<String> = reply.read1().chain_err(|| "Could not typecast return value")?;
         Ok(buses.into_iter()
             .filter(|bus| { bus.starts_with("org.mpris.MediaPlayer2.") })
             .map(|bus| { bus[23..].to_string() })
             .collect())
+    }
+
+    /// Returns an iterator of `MprisSignal`s.`timeout_ms` specifies the maximum amount of time the
+    /// iterator blocks (and waits for new messages).
+    pub fn signals(&self, timeout_ms: u32) -> MprisSignals {
+        MprisSignals::new(self.dbus_conn.clone(), timeout_ms)
     }
 }
 
@@ -243,20 +281,6 @@ impl MprisRoot {
             MessageItem::Bool(value),
         )
     }
-
-    /// Returns an iterator of `MprisSignal`s.`timeout_ms` specifies the maximum amount of time the
-    /// iterator blocks (and waits for new messages).
-    pub fn signals(&self, timeout_ms: u32) -> Result<MprisSignals> {
-        self.dbus_conn.conn.add_match(
-            "interface='org.mpris.MediaPlayer2.Player',member='Seeked'",
-        )?;
-        self.dbus_conn.conn.add_match(
-            "path='/org/mpris/MediaPlayer2',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'",
-        )?;
-
-
-        Ok(MprisSignals::new(self.dbus_conn.clone(), timeout_ms))
-    }
 }
 
 /// Iterator over `MprisSignal`s.
@@ -281,53 +305,91 @@ impl Iterator for MprisSignals {
             .conn
             .incoming(self.timeout_ms)
             .filter(|msg| {
-                msg.msg_type() == MessageType::Signal
+                if let Some(msg_str) = msg.sender() {
+                    &msg_str as &str == self.dbus_conn.unique_bus_name
+                        || &msg_str as &str == self.dbus_conn.bus_name
+                } else { false }
             })
-            .filter(|msg| {
-                msg.interface() == Some("org.mpris.MediaPlayer2.Player".into())
-                    || msg.interface() == Some("org.freedesktop.DBus.Properties".into())
-            })
-            .filter_map(|msg| {
-                if let Some(member) = msg.member() {
-                    match &member as &str {
-                        "Seeked" => {
-                            if let Some(pos) = msg.get1::<i64>() {
-                                Some(MprisSignal::Seeked { position: pos })
-                            } else { None }
-                        }
-                        "PropertiesChanged" => {
-                            if let (Some(interface),
-                                Some(ch_props),
-                                Some(invalidated_properties)) =
-                            msg.get3::<_, HashMap<String, Variant<Box<RefArg>>>, _>() {
-                                let changed_properties = ch_props
-                                    .into_iter()
-                                    .filter_map(|(n, mut v)| ChangedProperty::from_variant(&n, &mut v).ok())
-                                    .collect();
-                                Some(MprisSignal::PropertiesChanged {
-                                    interface,
-                                    changed_properties,
-                                    invalidated_properties,
-                                })
-                            } else { None }
-                        }
-                        member => Some(MprisSignal::Other(member.to_string(), msg.get_items())),
-                    }
-                } else { None }
-            }).next()
+            .filter_map(|msg| MprisSignal::from_message(&msg))
+            .next()
     }
 }
 
 /// Enum for the signals emitted by an MPRIS interface.
 #[derive(PartialEq, Debug, Clone)]
 pub enum MprisSignal {
+    /// Indicates that the track position has changed in a way that is inconsistant with the current
+    /// playing state.
+    ///
+    /// When this signal is not received, clients should assume that:
+    /// - When playing, the position progresses according to the rate property.
+    /// - When paused, it remains constant.
+    ///
+    /// This signal does not need to be emitted when playback starts or when the track changes,
+    /// unless the track is starting at an unexpected position. An expected position would be the
+    /// last known one when going from `Paused` to `Playing`, and 0 when going from `Stopped` to
+    /// `Playing`.
     Seeked { position: i64 },
+    // todo MPRIS TrackList
+//    /// Indicates that the entire tracklist has been replaced.
+//    /// It is left up to the implementation to decide when a change to the track list is invasive
+//    /// enough that this signal should be emitted instead of a series of `TrackAdded` and
+//    /// `TrackRemoved` signals.
+//    TrackListReplaced { tracks: Vec<::TrackId>, current_track: ::TrackId },
+//    /// Indicates that a track has been added to the track list.
+//    TrackAdded { metadata: ::MetadataMap, after_track: ::TrackId },
+//    /// Indicates that a track has been removed from the track list.
+//    TrackRemoved { track_id: ::TrackId },
+//    /// Indicates that the metadata of a track in the tracklist has changed.
+//    /// This may indicate that a track has been replaced, in which case the `track_id` metadata
+//    /// entry is different from the `track_id` argument.
+//    TrackMetadataChanged { track_id: ::TrackId, metadata: ::MetadataMap },
+    // todo MPRIS Playlists
+//    /// Indicates that either the Name or Icon attribute of a playlist has changed.
+//    /// Client implementations should be aware that this signal may not be implemented.
+//    PlaylistChanged { playlist: ::Playlist },
+    /// Indicates that a properties have changed or have been invalidated.
     PropertiesChanged {
         interface: String,
         changed_properties: Vec<ChangedProperty>,
         invalidated_properties: Vec<String>,
     },
-    Other(String, Vec<MessageItem>),
+}
+
+impl MprisSignal {
+    /// Builds a new `MprisSignal` from a DBUS `Message`.
+    ///
+    /// Only signals with the sender bus name "org.freedesktop.DBus" and `bus_name` are considered.
+    fn from_message(msg: &Message) -> Option<Self> {
+        if let (MessageType::Signal, Some(_path), Some(_interface), Some(_member)) = msg.headers() {
+            match (&_path as &str, &_interface as &str, &_member as &str) {
+                ("/org/mpris/MediaPlayer2", "org.freedesktop.DBus.Properties", "PropertiesChanged") => {
+                    if let (Some(interface),
+                        Some(ch_props),
+                        Some(invalidated_properties)) =
+                    msg.get3::<_, HashMap<String, Variant<Box<RefArg>>>, _>() {
+                        let changed_properties = ch_props
+                            .into_iter()
+                            .filter_map(|(n, mut v)| ChangedProperty::from_variant(&n, &mut v).ok())
+                            .collect();
+                        Some(MprisSignal::PropertiesChanged {
+                            interface,
+                            changed_properties,
+                            invalidated_properties,
+                        })
+                    } else { None }
+                }
+                ("/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seeked") => {
+                    if let Some(pos) = msg.get1::<i64>() {
+                        Some(MprisSignal::Seeked { position: pos })
+                    } else { None }
+                }
+                // todo MPRIS TrackList
+                // todo MPRIS Playlists
+                _ => None
+            }
+        } else { None }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -362,11 +424,11 @@ pub enum ChangedProperty {
     Tracks,
     CanEditTracks(bool),
 
-    // Mpris Playlists properties
+    // todo MPRIS Playlists
+// Mpris Playlists properties
 //    PlaylistCount(u32),
-//    Orderings(Vec<String>),
-//    // fixme Add appropriate type
-//    ActivePlaylist(String, String, String),
+//    Orderings(::PlaylistOrdering),
+//    ActivePlaylist(::Playlist),
 
     Other(String),
 }
@@ -387,7 +449,7 @@ impl ChangedProperty {
             "SupportedUriSchemes" => SupportedUriSchemes(cast_var::<Vec<String>>(data)?.clone()),
             "SupportedMimeTypes" => SupportedMimeTypes(cast_var::<Vec<String>>(data)?.clone()),
 
-            // Mpris Player properties
+// Mpris Player properties
             "PlaybackStatus" => PlaybackStatus(::PlaybackStatus::from_str(cast_var_to_str(data)?)?),
             "LoopStatus" => LoopStatus(::LoopStatus::from_str(cast_var_to_str(data)?)?),
             "Rate" => Rate(cast_var(data)?),
@@ -414,14 +476,14 @@ impl ChangedProperty {
             "CanPause" => CanPause(cast_var(data)?),
             "CanSeek" => CanSeek(cast_var(data)?),
 
-            // Mpris TrackList properties
+// Mpris TrackList properties
             "Tracks" => Tracks,
             "CanEditTracks" => CanEditTracks(cast_var(data)?),
 
-            // Mpris Playlists properties
-            // "PlaylistCount" => PlaylistCount(*data.as_any().downcast_ref::<u32>()?),
-            // "Orderings" => Orderings(*data.as_any().downcast_ref::<Vec<String>>()?),
-            // "ActivePlaylist" => ActivePlaylist( ... ),
+// Mpris Playlists properties
+// "PlaylistCount" => PlaylistCount(*data.as_any().downcast_ref::<u32>()?),
+// "Orderings" => Orderings(*data.as_any().downcast_ref::<Vec<String>>()?),
+// "ActivePlaylist" => ActivePlaylist( ... ),
             _ => Other(format!("{:?}", data.0)),
         };
 
