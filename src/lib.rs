@@ -68,6 +68,13 @@ pub struct TrackId {
     track_id: String,
 }
 
+impl TrackId {
+    /// Checks if this is no track.
+    pub fn is_no_track(&self) -> bool {
+        self.track_id == "/org/mpris/MediaPlayer2/TrackList/NoTrack"
+    }
+}
+
 impl FromStr for TrackId {
     type Err = Error;
 
