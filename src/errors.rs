@@ -12,15 +12,15 @@ error_chain! {
             display("general error: {}", msg)
         }
         AccessedAbsentOptionalProperty(obj_path: String, member: String) {
-            description("optional property is not present, but was accessed")
+            description("accessed absent (optional) property")
             display("accessed absent optional property: '{}' '{}'", obj_path, member)
         }
         TypeBuildError(from: &'static str, to: String) {
-            description("could not build type")
+            description("type build error")
             display("could not build type {} from '{}'", from, to)
         }
         TypeCastError(from: String, to: &'static str) {
-            description("could not cast type")
+            description("type cast error")
             display("could not cast type '{:?}' to {}", from, to)
         }
         ServiceUnknown(bus_name: String) {
