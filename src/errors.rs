@@ -23,6 +23,10 @@ error_chain! {
             description("could not cast type")
             display("could not cast type '{:?}' to {}", from, to)
         }
+        ServiceUnknown(bus_name: String) {
+            description("service unknown")
+            display("The service {} is unknown. Is the player still running?", bus_name)
+        }
     }
 }
 

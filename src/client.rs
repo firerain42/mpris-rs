@@ -22,13 +22,13 @@ impl DBusConn {
     fn call_method_without_reply(&self, obj_path: &str, member: &str) -> Result<()> {
         let msg =
             Message::new_method_call(&self.bus_name, obj_path, "org.mpris.MediaPlayer2", member)?;
-
-        self.conn
-            .send_with_reply_and_block(msg, self.timeout)
-            .chain_err(|| {
-                ErrorKind::GeneralError("Could not call D-Bus method.".to_string())
-            })?;
-        Ok(())
+        if let Err(err) = self.conn.send_with_reply_and_block(msg, self.timeout) {
+            if err.message().unwrap_or("").contains("org.freedesktop.DBus.Error.ServiceUnknown") {
+                Err(err).chain_err(|| ErrorKind::ServiceUnknown(self.bus_name.clone()))
+            } else {
+                Err(err).chain_err(|| ErrorKind::GeneralError("Could not call D-Bus method.".to_string()))
+            }
+        } else { Ok(())}
     }
 
     /// Reads a DBUS property.
