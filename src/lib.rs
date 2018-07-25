@@ -23,11 +23,12 @@ pub mod errors;
 
 use dbus::{Path, MessageItem};
 use dbus::arg::RefArg;
-use chrono::{Utc, DateTime};
+use chrono::{DateTime, FixedOffset};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::rc::Rc;
 use errors::*;
+use ::dbus::arg::cast;
 
 
 /// A unique resource identifier.
@@ -114,7 +115,7 @@ impl FromStr for PlaybackStatus {
             "paused" => Ok(PlaybackStatus::Paused),
             "stopped" => Ok(PlaybackStatus::Stopped),
             _ => bail!(ErrorKind::TypeBuildError(stringify!(PlaybackStatus), s.to_string())),
-                // 'forward-seek', 'reverse-seek' and 'error' are ignored
+            // 'forward-seek', 'reverse-seek' and 'error' are ignored
         }
     }
 }
@@ -140,7 +141,7 @@ pub enum LoopStatus {
     Playlist,
 }
 
-impl FromStr for  LoopStatus {
+impl FromStr for LoopStatus {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<LoopStatus> {
@@ -170,8 +171,28 @@ pub struct MetadataMap {
     raw_map: HashMap<String, Rc<RefArg>>,
 }
 
-impl MetadataMap {
+macro_rules! mm_getter {
+    ($name:ident, u32, $map_name:expr) => {
+        pub fn $name(&self) -> Option<u32> {
+            let argref: &Rc<RefArg> = self.raw_map.get($map_name)?;
+            Some(argref.as_u64()? as u32)
+        }
+    };
+    ($name:ident, DateTime<FixedOffset>, $map_name:expr) => {
+        pub fn $name(&self) -> Option<DateTime<FixedOffset>> {
+            let argref: &Rc<RefArg> = self.raw_map.get($map_name)?;
+            DateTime::parse_from_rfc3339(cast::<String>(argref)?).ok()
+        }
+    };
+    ($name:ident, $return_type:ty, $map_name:expr) => {
+        pub fn $name(&self) -> Option<$return_type> {
+            let argref: &Rc<RefArg> = self.raw_map.get($map_name)?;
+            Some(cast::<$return_type>(argref)?.to_owned())
+        }
+    };
+}
 
+impl MetadataMap {
     /// Creates a new `MetadataMap` from a Map of names and variants.
     pub fn from_map(raw_map: HashMap<String, Rc<RefArg>>) -> Result<Self> {
         let trackid;
@@ -182,104 +203,61 @@ impl MetadataMap {
             bail!("Mandatory 'mpris:trackid' is not present. Could not construct MetadataMap.");
         }
 
-        Ok(MetadataMap { trackid , raw_map })
+        Ok(MetadataMap { trackid, raw_map })
     }
 
     // MPRIS-specific
     /// A unique identity for this track within the context of an MPRIS object (eg: tracklist).
     pub fn trackid(&self) -> &TrackId { &self.trackid }
     /// The duration of the track in microseconds.
-    pub fn length(&self) -> Option<TimeInUs> {
-        use ::dbus::arg::cast;
+    mm_getter!(length, TimeInUs, "mpris:length");
 
-        let argref = self.raw_map.get("mpris:length")?;
-        Some(*cast::<TimeInUs>(argref)?)
-    }
     /// The location of an image representing the track or album. Clients should not assume this
     /// will continue to exist when the media player stops giving out the URL.
-    pub fn art_url(&self) -> Option<Uri> {
-        unimplemented!();
-    }
+    mm_getter!(art_url, Uri, "mpris:artUrl");
 
     // Common Xesam properties
     /// The album name.
-    pub fn album(&self) -> Option<String> {
-        unimplemented!();
-    }
+    mm_getter!(album, String, "xesam:album");
     /// The album artist(s).
-    pub fn album_artist(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(album_artist, Vec<String>, "xesam:albumArtist");
     /// The track artist(s).
-    pub fn artist(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(artist, Vec<String>, "xesam:artist");
     /// The track lyrics.
-    pub fn as_text(&self) -> Option<String> {
-        unimplemented!();
-    }
+    mm_getter!(as_text, String, "xesam:asText");
     /// The speed of the music, in beats per minute.
-    pub fn audio_bpm(&self) -> Option<u32> {
-        unimplemented!();
-    }
+    mm_getter!(audio_bpm, u32, "xesam:audioBPM");
     /// An automatically-generated rating, based on things such as how often it has been played.
     /// This should be in the range 0.0 to 1.0.
-    pub fn auto_rating(&self) -> Option<f64> {
-        unimplemented!();
-    }
+    mm_getter!(auto_rating, f64, "xesam:autoRating");
     /// A (list of) freeform comment(s).
-    pub fn comment(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(comment, Vec<String>, "xesam:comment");
     /// The composer(s) of the track.
-    pub fn composer(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(composer, Vec<String>, "xesam:composer");
     /// When the track was created. Usually only the year component will be useful.
-    pub fn content_created(&self) -> Option<DateTime<Utc>> {
-        unimplemented!();
-    }
+    mm_getter!(content_created, DateTime<FixedOffset>, "xesam:contentCreated");
     /// The disc number on the album that this track is from.
-    pub fn disc_number(&self) -> Option<u32> {
-        unimplemented!();
-    }
+    mm_getter!(disc_number, u32, "xesam:discNumber");
     /// When the track was first played.
-    pub fn first_used(&self) -> Option<DateTime<Utc>> {
-        unimplemented!();
-    }
+    mm_getter!(first_used, DateTime<FixedOffset>, "xesam:firstUsed");
     /// The genre(s) of the track.
-    pub fn genre(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(genre, Vec<String>, "xesam:genre");
     /// When the track was last played.
-    pub fn last_used(&self) -> Option<DateTime<Utc>> {
-        unimplemented!();
-    }
+    mm_getter!(last_used, DateTime<FixedOffset>, "xesam:lastUsed");
     /// The lyricist(s) of the track.
-    pub fn lyricist(&self) -> Option<Vec<String>> {
-        unimplemented!();
-    }
+    mm_getter!(lyricist, Vec<String>, "xesam:lyricist");
     /// The track title.
-    pub fn title(&self) -> Option<String> {
-        unimplemented!();
-    }
+    mm_getter!(title, String, "xesam:title");
     /// The location of the media file.
-    pub fn track_number(&self) -> Option<u32> {
-        unimplemented!();
-    }
+    mm_getter!(track_number, u32, "xesam:trackNumber");
     /// The location of the media file.
-    pub fn url(&self) -> Option<Uri> {
-        unimplemented!();
-    }
+    mm_getter!(url, Uri, "xesam:url");
     /// The number of times the track has been played.
-    pub fn use_count(&self) -> Option<u32> {
-        unimplemented!();
-    }
+    mm_getter!(user_count, u32, "xesam:userCount");
     /// A user-specified rating. This should be in the range 0.0 to 1.0.
-    pub fn user_rating(&self) -> Option<f64> {
-        unimplemented!();
-    }
+    mm_getter!(user_rating, f64, "xesam:userRating");
 }
+
 
 impl PartialEq for MetadataMap {
     fn eq(&self, other: &MetadataMap) -> bool {
@@ -296,6 +274,8 @@ mod test {
     use std::str::FromStr;
     use super::*;
 
+    #[test]
+    #[allow(non_snake_case)]
     fn test_MetadataMap() {
         let mut example_map: HashMap<String, Rc<RefArg>> = HashMap::with_capacity(22);
         example_map.insert("mpris:trackid".to_string(), Rc::new("/foo/bar/baz".to_string()));
@@ -305,20 +285,20 @@ mod test {
         example_map.insert("xesam:albumArtist".to_string(), Rc::new(vec!["example album artist".to_string()]));
         example_map.insert("xesam:artist".to_string(), Rc::new(vec!["example artist".to_string()]));
         example_map.insert("xesam:asText".to_string(), Rc::new("example text".to_string()));
-        example_map.insert("xesam:audioBPM".to_string(), Rc::new(23));
+        example_map.insert("xesam:audioBPM".to_string(), Rc::new(23u32));
         example_map.insert("xesam:autoRating".to_string(), Rc::new(0.31415));
         example_map.insert("xesam:comment".to_string(), Rc::new(vec!["example comment".to_string()]));
         example_map.insert("xesam:composer".to_string(), Rc::new(vec!["example composer".to_string()]));
-        example_map.insert("xesam:contentCreated".to_string(), Rc::new("2007-04-29T13:56+01:00".to_string()));
-        example_map.insert("xesam:discNumber".to_string(), Rc::new(42));
-        example_map.insert("xesam:firstUsed".to_string(), Rc::new("2008-04-29T13:56+01:00".to_string()));
+        example_map.insert("xesam:contentCreated".to_string(), Rc::new("2007-04-29T14:35:51+02:00".to_string()));
+        example_map.insert("xesam:discNumber".to_string(), Rc::new(42u32));
+        example_map.insert("xesam:firstUsed".to_string(), Rc::new("2008-04-29T14:35:51+02:00".to_string()));
         example_map.insert("xesam:genre".to_string(), Rc::new(vec!["example genre".to_string()]));
-        example_map.insert("xesam:lastUsed".to_string(), Rc::new("2009-04-29T13:56+01:00".to_string()));
+        example_map.insert("xesam:lastUsed".to_string(), Rc::new("2009-04-29T14:35:51+02:00".to_string()));
         example_map.insert("xesam:lyricist".to_string(), Rc::new(vec!["example lyricist".to_string()]));
         example_map.insert("xesam:title".to_string(), Rc::new("example title".to_string()));
-        example_map.insert("xesam:trackNumber".to_string(), Rc::new(23));
+        example_map.insert("xesam:trackNumber".to_string(), Rc::new(23u32));
         example_map.insert("xesam:url".to_string(), Rc::new("/example/dir/url.mp3".to_string()));
-        example_map.insert("xesam:useCount".to_string(), Rc::new(42));
+        example_map.insert("xesam:userCount".to_string(), Rc::new(42u32));
         example_map.insert("xesam:userRating".to_string(), Rc::new(0.31415));
 
         let mmap = MetadataMap::from_map(example_map).unwrap();
@@ -334,16 +314,16 @@ mod test {
         assert_eq!(mmap.auto_rating(), Some(0.31415));
         assert_eq!(mmap.comment(), Some(vec!["example comment".to_string()]));
         assert_eq!(mmap.composer(), Some(vec!["example composer".to_string()]));
-        assert_eq!(mmap.content_created(), Some(FromStr::from_str("2007-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.content_created(), Some(DateTime::parse_from_rfc3339("2007-04-29T14:35:51+02:00").unwrap()));
         assert_eq!(mmap.disc_number(), Some(42));
-        assert_eq!(mmap.first_used(), Some(FromStr::from_str("2008-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.first_used(), Some(DateTime::parse_from_rfc3339("2008-04-29T14:35:51+02:00").unwrap()));
         assert_eq!(mmap.genre(), Some(vec!["example genre".to_string()]));
-        assert_eq!(mmap.last_used(), Some(FromStr::from_str("2009-04-29T13:56+01:00").unwrap()));
+        assert_eq!(mmap.last_used(), Some(DateTime::parse_from_rfc3339("2009-04-29T14:35:51+02:00").unwrap()));
         assert_eq!(mmap.lyricist(), Some(vec!["example lyricist".to_string()]));
         assert_eq!(mmap.title(), Some("example title".to_string()));
         assert_eq!(mmap.track_number(), Some(23));
         assert_eq!(mmap.url(), Some("/example/dir/url.mp3".to_string()));
-        assert_eq!(mmap.use_count(), Some(42));
+        assert_eq!(mmap.user_count(), Some(42));
         assert_eq!(mmap.user_rating(), Some(0.31415));
     }
 }
